@@ -1,0 +1,61 @@
+name: CI
+
+# Build and test the workspace on every PR and on pushes to the default branch.
+# This is the gate that catches a publish sync dropping a file the crates depend
+# on: if the sanitized snapshot no longer builds, the sync PR goes red and
+# cannot merge.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Full debug info fills the runner's disk before the doctests link.
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+    steps:
+      # Use first-party actions; install the Rust toolchain through rustup.
+      # persist-credentials: false — token isn't used after checkout.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Install the toolchain via rustup (preinstalled on GitHub runners) rather
+      # than a third-party action. edition 2024 needs a recent stable.
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+          rustc --version
+
+      # Cache only content-addressed download dirs, not target/ (poisoning vector).
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Disk usage
+        if: always()
+        run: df -h / && du -sh target
