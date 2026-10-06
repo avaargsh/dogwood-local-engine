@@ -1,19 +1,19 @@
 name: CI
 
-# Build and test the workspace on every PR and on pushes to the default branch.
-# This is the gate that catches a publish sync dropping a file the crates depend
-# on: if the sanitized snapshot no longer builds, the sync PR goes red and
-# cannot merge.
+# Build and test the workspace once per pull request.
+# This catches a publish sync dropping files the crates depend on without
+# repeating the same validation again after merge.
 
 on:
   pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-  workflow_dispatch:
 
 jobs:
   build-and-test:
